@@ -1,6 +1,6 @@
 import os
 from bson import ObjectId
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 import motor.motor_asyncio
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,8 +24,7 @@ class UpdateTank(BaseModel):
     lat: str | None=None
     long: str | None=None
 
-
-
+    
 app = FastAPI()
 
 
@@ -41,17 +40,25 @@ app.add_middleware(
 
 client = motor.motor_asyncio.AsyncIOMotorClient(os.getenv('db_url'))
 
-db = client.get_database("tutorial4")
-people_collection = db.get_collection("Profile")
+db = client.get_database("Profile")
+user_collection = db.get_collection("User")
+tanks_collection = db.get_collection("Tanks")
 
 
 @app.get("/profile/")
-async def create_item():
+async def get_profile():
+    #created_profile = await user_collection.find_one({"_id": })
     return
 
-@app.post("/profile/")
-async def create_item(profile: Profile):
-    return
+@app.post("/profile/", 
+        response_description="Add new student",
+ 	    response_model=Profile,
+	    status_code=status.HTTP_201_CREATED,
+	    response_model_by_alias=False,)
+async def create_profile(profile: Profile):
+    new_user = await user_collection.insert_one(profile.model_dump(by_alias=True, exclude=["id"]))
+    #created_profile = await user_collection.find_one({"_id": new_user.inserted_id})
+    return profile.model_dump(by_alias=True, exclude=["id"])
 
 @app.get("/tank/")
 async def create_item():
