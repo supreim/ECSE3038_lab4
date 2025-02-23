@@ -1,13 +1,12 @@
 from datetime import datetime
-import json
 import os
 from bson import ObjectId
 from fastapi import FastAPI, HTTPException, status
 import motor.motor_asyncio
-from pydantic import BaseModel, Json
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo import ReturnDocument
-
+from dotenv import load_dotenv 
 
 
 
@@ -43,9 +42,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-#print(os.getenv('db'))
-client = motor.motor_asyncio.AsyncIOMotorClient("mongodb://127.0.0.1:27017/?directConnection=true&serverSelectionTimeoutMS=2000&appName=mongosh+2.4.0")
 
+
+
+load_dotenv() 
+
+client = motor.motor_asyncio.AsyncIOMotorClient(os.getenv("db"))
 db = client.get_database("Profile")
 user_collection = db.get_collection("User")
 tanks_collection = db.get_collection("Tanks")
