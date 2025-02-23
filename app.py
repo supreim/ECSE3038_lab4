@@ -1,8 +1,10 @@
-from datetime import date, datetime
+from datetime import datetime
+import json
 import os
+from bson import ObjectId
 from fastapi import FastAPI, HTTPException, status
 import motor.motor_asyncio
-from pydantic import BaseModel
+from pydantic import BaseModel, Json
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo import ReturnDocument
 
@@ -11,7 +13,7 @@ from pymongo import ReturnDocument
 
 class Profile(BaseModel):
     id: str | None=None
-    last_updated: str | None=None
+    last_updated: str | None=str(datetime.now())
     username: str
     color: str
     role: str
@@ -51,21 +53,22 @@ tanks_collection = db.get_collection("Tanks")
 
 @app.get("/profile/",status_code=status.HTTP_200_OK)
 async def get_profile():
-     tanks:Profile = await user_collection.find_one()
-     tanks["_id"] = str(tanks["_id"])
-     return tanks
+     user:Profile = await user_collection.find_one()
+     
+     if user is None:
+         return {}
 
-@app.post("/profile/", 
-        response_description="Add new User",
- 	    response_model=Profile,
-	    status_code=status.HTTP_201_CREATED,
-	    response_model_by_alias=False,)
+     user["_id"] = str(user["_id"])
+     return user
+
+@app.post("/profile/", status_code=status.HTTP_201_CREATED,)
 async def create_profile(user: Profile):
     if len(await user_collection.find().to_list()) > 0:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User already created")
     
-    new_user = await user_collection.insert_one(user.model_dump(by_alias=True, exclude=["id"]))
-    created_user = await user_collection.find_one({"_id": new_user.inserted_id})
+    await user_collection.insert_one(user.model_dump(by_alias=True, exclude=["id"]))
+
+    created_user:Profile = await user_collection.find_one()
     created_user["_id"] = str(created_user["_id"])
     return created_user
 
@@ -87,20 +90,38 @@ async def create_item(tank: Tank):
         raise HTTPException(status_code=status.HTTP_406_NOT_ACCEPTABLE, detail="Missing data")
 
     new_tank = await tanks_collection.insert_one(tank.model_dump(by_alias=True, exclude=["id"]))
+
     created_tank = await tanks_collection.find_one({"_id": new_tank.inserted_id})
     created_tank["_id"] = str(created_tank["_id"])
 
     await user_collection.update_one({},{"$set": {"last_updated":str(datetime.now())}})
-
     
     return created_tank
 
-@app.patch("/tank/{id}",status_code=status.HTTP_201_CREATED)
+@app.patch("/tank/{id}",status_code=status.HTTP_200_OK)
 async def create_item(id:str, tank: UpdateTank):
-    tank = await tanks_collection.find_one_and_update({"_id":id},{"$set":tank},return_document = ReturnDocument.AFTER)
-    return tank
+    if not (tank.location or tank.lat or tank.long):
+        raise HTTPException(status_code=status.HTTP_304_NOT_MODIFIED, detail="No Acceptable Data Field was provided")
+    
+    updated_tank = await tanks_collection.find_one_and_update({"_id":ObjectId(id)},{"$set":tank.model_dump()},return_document = ReturnDocument.AFTER)
 
-@app.delete("/tank/{id}")
+    if updated_tank is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matching ID Not Found")
+    
+    await user_collection.update_one({},{"$set": {"last_updated":str(datetime.now())}})
+
+    updated_tank["_id"] = str(updated_tank["_id"])
+   
+    return updated_tank
+
+@app.delete("/tank/{id}",status_code=status.HTTP_204_NO_CONTENT)
 async def create_item(id:str):
+    tank = await tanks_collection.delete_one({"_id":ObjectId(id)})
+
+    if tank.deleted_count == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matching ID Not Found")
+    
+    await user_collection.update_one({},{"$set": {"last_updated":str(datetime.now())}})
+
     return
 
